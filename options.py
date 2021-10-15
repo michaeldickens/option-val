@@ -144,24 +144,24 @@ class ModelBase:
 class FixedHorizonModel(ModelBase):
 
     @memoize
-    def get_payoff(self, state, t_quit=None):
-        """Get the expected payoff from state state, if you quit exactly then"""
+    def get_payoff(self, i, t_quit=None):
+        """Get the expected payoff from state i, if you quit exactly then"""
         if t_quit is None:
             # We haven't quit yet. Should we quit now?
-            payoff_if_quit = self.get_payoff(state, state.t)
-            if state.t == self.ts_vesting_interval:
+            payoff_if_quit = self.get_payoff(i, i.t)
+            if i.t == self.ts_vesting_interval:
                 # The trade you got in your offer is over now, so pretend you
                 # stopped working. In reality, you'll probably be offered more
                 # trades at this point (via refresher grants) so this
                 # underestimates the value of the initial trade.
                 return payoff_if_quit
-            elif state.t == self.ts_horizon:
+            elif i.t == self.ts_horizon:
                 # Horizon ended before options finished vesting
                 return payoff_if_quit
-            payoff_if_stay = (self.p_growth * self.get_payoff(state.go_up())
-                              + self.p_loss * self.get_payoff(state.go_down()))
+            payoff_if_stay = (self.p_growth * self.get_payoff(i.go_up())
+                              + self.p_loss * self.get_payoff(i.go_down()))
             return max(payoff_if_stay, payoff_if_quit)
-        elif state.t == self.ts_horizon:
+        elif i.t == self.ts_horizon:
             # cost = self.get_opportunity_cost(t_quit)
             # vesting ends at the last "vesting increment"
             t_vesting_end = max(t for t in self.ts_vesting_increments if t <= t_quit)
@@ -174,32 +174,32 @@ class FixedHorizonModel(ModelBase):
                 for t in range(t_quit, self.ts_horizon)
             )
 
-            full_equity_payoff = self.get_full_discounted_payoff_at_exercise(state)
+            full_equity_payoff = self.get_full_discounted_payoff_at_exercise(i)
             return salary_after_quit + full_equity_payoff * vested_fraction
         else:
             # we already quit so just run through the end
-            return (self.p_growth * self.get_payoff(state.go_up(), t_quit)
-                    + self.p_loss * self.get_payoff(state.go_down(), t_quit))
+            return (self.p_growth * self.get_payoff(i.go_up(), t_quit)
+                    + self.p_loss * self.get_payoff(i.go_down(), t_quit))
 
     @memoize
-    def p_quit_before_or_at(self, state):
-        """Return P(have quit already | t = state.t, n_up = state.n_up)"""
-        if state.t == 0:
+    def p_quit_before_or_at(self, i):
+        """Return P(have quit already | t = i.t, n_up = i.n_up)"""
+        if i.t == 0:
             return 0
-        if (state.t >= self.ts_vesting_interval
-            or self.get_payoff(state, state.t) >= self.get_payoff(state)):
+        if (i.t >= self.ts_vesting_interval
+            or self.get_payoff(i, i.t) >= self.get_payoff(i)):
             # if we should quit here, then we'll always have quit before-or-at once
             # we get here
             return 1.0
-        if state.n_up == 0:
-            return self.p_quit_before_or_at(state.go_back_up())
-        if state.n_up == state.t:
-            return self.p_quit_before_or_at(state.go_back_down())
+        if i.n_up == 0:
+            return self.p_quit_before_or_at(i.go_back_up())
+        if i.n_up == i.t:
+            return self.p_quit_before_or_at(i.go_back_down())
         # if we're here, then we either came from (t-1, n_up) or (t-1, n_up-1),
         # weighted in proportion to their absolute probabilities. So the
         # probability we've quit is the weighted
-        i_up = state.go_back_up()
-        i_dn = state.go_back_down()
+        i_up = i.go_back_up()
+        i_dn = i.go_back_down()
         p1 = self.get_p_n_up(i_up)
         val1 = self.p_quit_before_or_at(i_up)
         p2 = self.get_p_n_up(i_dn)
